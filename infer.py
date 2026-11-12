@@ -57,10 +57,9 @@ def main():
     #We recommend enabling flash_attention_2 for better acceleration and memory saving, especially in multi-image and video scenarios.
     reasoning_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         args.reasoning_model_path,
-        torch_dtype=torch.float16,
+        torch_dtype=torch.bfloat16,
         attn_implementation="sdpa",
-        device_map="auto",
-        max_memory={i: "20GiB" for i in range(torch.cuda.device_count())},
+        device_map="cuda:0",
     )
 
         
@@ -136,7 +135,7 @@ def main():
     
     print("Thinking process: ", think)
     
-    with torch.inference_mode(), torch.autocast("cuda", dtype=torch.float16):
+    with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
         segmentation_model.set_image(image)
         masks, scores, _ = segmentation_model.predict(
             point_coords=points,

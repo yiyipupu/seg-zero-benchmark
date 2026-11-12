@@ -4,7 +4,7 @@ from pathlib import Path
 from PIL import Image
 p=argparse.ArgumentParser();p.add_argument('--manifest',required=True);p.add_argument('--root',required=True);p.add_argument('--output',required=True);a=p.parse_args()
 base=Path(__file__).resolve().parents[1];out=Path(a.output).resolve();out.mkdir(parents=True,exist_ok=True)
-weights=Path(os.environ.get('SEG_ROOT','/data/yipu/Seg'))/'weights';seen=set();rows=[]
+weights=Path(os.environ.get('SEG_ROOT','/data/yukun/Seg'))/'weights';seen=set();rows=[]
 for line in Path(a.manifest).read_text().splitlines():
     if not line.strip():continue
     r=json.loads(line)

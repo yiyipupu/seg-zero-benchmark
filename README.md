@@ -14,7 +14,7 @@
 ## 快速配环境（Linux / RTX 4090 24GB）
 
 ```bash
-export SEG_ROOT=/data/yipu/Seg
+export SEG_ROOT=/data/yukun/Seg
 mkdir -p "$SEG_ROOT"/{env,cache,checkpoints,datasets,outputs,weights}
 export CONDA_PKGS_DIRS=$SEG_ROOT/cache/conda_pkgs
 export PIP_CACHE_DIR=$SEG_ROOT/cache/pip
@@ -31,14 +31,14 @@ python -c 'import torch; print(torch.__version__, torch.cuda.is_available()); pr
 python scripts/download_weights.py
 ```
 
-每次开启新终端需重新激活环境并设置 SEG_ROOT、缓存变量。CUDA 12.1 wheel 需要兼容 NVIDIA 驱动；无需额外安装系统 CUDA Toolkit。使用 FP16 + SDPA，无需 FlashAttention/vLLM/Ray。单张 4090 为目标配置，尚未实机验证；已验证配置为四张 RTX 2080 Ti。若显存不足可暴露多张 GPU，脚本按每卡 20GiB 上限自动分配模型；该上限针对 24GB 卡设置。
+每次开启新终端需重新激活环境并设置 SEG_ROOT、缓存变量。CUDA 12.1 wheel 需要兼容 NVIDIA 驱动；无需额外安装系统 CUDA Toolkit。使用 RTX 4090 支持的 BF16，模型直接加载到单张 GPU，不再自动分卡或设置每卡显存上限。注意力保留 PyTorch SDPA，便于快速安装，无需编译 FlashAttention，也无需 vLLM/Ray。单张 4090 配置尚未实机验证；若显存不足，请先确认该卡没有其他进程占用。
 
 ## 自有数据格式
 
 这是本封装定义的接口，不是要求伪造 RefCOCOg 或下载其数据。将原始标注转换为以下 JSONL，每行一个“图片＋问题＋目标掩码”样本：
 
 ```text
-/data/yipu/Seg/datasets/custom/
+/data/yukun/Seg/datasets/custom/
   test.jsonl
   images/001.jpg
   masks/001.png
@@ -59,7 +59,7 @@ python scripts/download_weights.py
 ## 批量推理与评估
 
 ```bash
-export SEG_ROOT=/data/yipu/Seg
+export SEG_ROOT=/data/yukun/Seg
 export CUDA_VISIBLE_DEVICES=0
 export MPLBACKEND=Agg
 export HF_HUB_OFFLINE=1
@@ -79,6 +79,6 @@ python scripts/evaluate.py \
 
 ## 修改与验证状态
 
-infer.py 改编自上述官方提交：FP16、SDPA、自动分卡、本地 SAM2 加载、无界面保存与额外二值掩码。保留官方 840×840 输入缩放与坐标映射。官方示例已在 RTX 2080 Ti 多卡上跑通；4090、自有数据集与批量评估尚未实测。权重与数据均在外部目录，不提交 Git。
+infer.py 改编自上述官方提交：BF16、SDPA、单卡加载、本地 SAM2 加载、无界面保存与额外二值掩码。保留官方 840×840 输入缩放与坐标映射。先前 FP16 多卡版本已在 RTX 2080 Ti 上跑通官方示例；本仓库当前 BF16 单卡版本、4090、自有数据集与批量评估尚未实测。权重与数据均在外部目录，不提交 Git。
 
 源代码保留 Apache-2.0 LICENSE；模型和数据使用条件请分别查看其发布页。
