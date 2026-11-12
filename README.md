@@ -2,6 +2,25 @@
 
 本仓库封装 Seg-Zero 单目标推理，面向自有数据的可重复测试。输入一张图片和一个文本问题，输出一个二值目标掩码。不包含模型权重或私有数据。
 
+## 1. 下载这个仓库
+
+```bash
+git clone https://github.com/yiyipupu/seg-zero-benchmark.git
+cd seg-zero-benchmark
+```
+
+本仓库已直接包含 `upstream/` 下的官方完整 Seg-Zero 源码（含训练、评估、推理、verl 和示例图片），无需再克隆官方仓库或初始化 submodule。根目录的 `infer.py` 与 `scripts/` 是为自有数据测试提供的适配入口。模型权重通过下面的命令另行下载。
+
+目录结构：
+
+```text
+README.md                # 从安装到评估的使用指南
+infer.py                 # 4090 单卡推理入口
+scripts/                 # 下载、转换、批量推理、评估
+examples/test.jsonl       # 输入格式示例
+upstream/                # 固定版本的官方完整源码与 LICENSE
+```
+
 ## 来源与原始数据集
 
 - 论文：[Seg-Zero: Reasoning-Chain Guided Segmentation via Cognitive Reinforcement](https://arxiv.org/abs/2503.06520)。
@@ -11,7 +30,7 @@
 - 数据：[RefCOCOg-9K](https://huggingface.co/datasets/Ricky06662/refCOCOg_9k_840)、[2K](https://huggingface.co/datasets/Ricky06662/refCOCOg_2k_840)、[ReasonSeg test](https://huggingface.co/datasets/Ricky06662/ReasonSeg_test)、[val](https://huggingface.co/datasets/Ricky06662/ReasonSeg_val)。测试自有数据无需下载这些原始数据集。
 - 推理模型：`Ricky06662/Seg-Zero-7B` + `facebook/sam2-hiera-large`，流程为 Qwen2.5-VL 生成框和两个提示点，再由 SAM2 输出掩码。
 
-## 快速配环境（Linux / RTX 4090 24GB）
+## 2. 配环境（Linux / RTX 4090 24GB）
 
 ```bash
 export SEG_ROOT=/data/yukun/Seg
@@ -31,9 +50,33 @@ python -c 'import torch; print(torch.__version__, torch.cuda.is_available()); pr
 python scripts/download_weights.py
 ```
 
-每次开启新终端需重新激活环境并设置 SEG_ROOT、缓存变量。CUDA 12.1 wheel 需要兼容 NVIDIA 驱动；无需额外安装系统 CUDA Toolkit。使用 RTX 4090 支持的 BF16，模型直接加载到单张 GPU，不再自动分卡或设置每卡显存上限。注意力保留 PyTorch SDPA，便于快速安装，无需编译 FlashAttention，也无需 vLLM/Ray。单张 4090 配置尚未实机验证；若显存不足，请先确认该卡没有其他进程占用。
+每次开启新终端，在仓库目录执行：
 
-## 自有数据格式
+```bash
+source scripts/env.sh
+conda activate "$SEG_ROOT/env/segzero"
+```
+
+如 `conda` 尚未安装，先安装 Miniconda；如果提示需要初始化，执行 `source ~/miniconda3/etc/profile.d/conda.sh`（按实际安装位置调整）。权重下载中断后重新运行 `python scripts/download_weights.py` 即可；仅在官方站不可达时尝试 `export HF_ENDPOINT=https://hf-mirror.com`。
+
+## 3. 先跑仓库自带图片
+
+```bash
+source scripts/env.sh
+conda activate "$SEG_ROOT/env/segzero"
+CUDA_VISIBLE_DEVICES=0 HF_HUB_OFFLINE=1 python infer.py \
+  --reasoning_model_path "$SEG_ROOT/weights/Seg-Zero-7B" \
+  --segmentation_model_path "$SEG_ROOT/weights/sam2-hiera-large/sam2_hiera_large.pt" \
+  --image_path upstream/assets/test_image.png \
+  --text "the unusual object in the image" \
+  --output_path "$SEG_ROOT/outputs/demo.png"
+```
+
+成功标志：命令正常退出，并生成 `outputs/demo.png` 和 `outputs/demo.png.mask.png`。示例问题对应西瓜轮子的自行车。选择其他物理 GPU 时修改 `CUDA_VISIBLE_DEVICES`，代码中的 `cuda:0` 表示所选的第一张可见卡。
+
+CUDA 12.1 wheel 需要兼容 NVIDIA 驱动；无需额外安装系统 CUDA Toolkit。使用 RTX 4090 支持的 BF16，模型直接加载到单张 GPU，不再自动分卡或设置每卡显存上限。注意力保留 PyTorch SDPA，便于快速安装，无需编译 FlashAttention，也无需 vLLM/Ray。单张 4090 配置尚未实机验证；若显存不足，请先确认该卡没有其他进程占用。
+
+## 4. 整理自有数据
 
 这是本封装定义的接口，不是要求伪造 RefCOCOg 或下载其数据。将原始标注转换为以下 JSONL，每行一个“图片＋问题＋目标掩码”样本：
 
@@ -56,7 +99,28 @@ python scripts/download_weights.py
 - 纯推理允许省略 mask；评估必须有 mask。暂不支持 ignore 像素，须在转换阶段明确处理。
 - 当前尚未收到团队原始标注样例，因此未实现 COCO polygon/RLE 等格式的专属转换器。
 
-## 批量推理与评估
+### 可选：从 JSON 列表转换
+
+如果当前已有图片与单通道 mask，可整理一个 JSON 数组 `annotations.json`：
+
+```json
+[
+  {"id":"sample_001","image":"images/001.jpg","text":"Which object can protect people from rain?","mask":"labels/001.png","target_id":3}
+]
+```
+
+`target_id: 3` 表示从类别/实例 ID mask 中提取像素值为 3 的目标；已有二值 mask 时省略此字段。该工具不读取 COCO polygon/RLE，后者需先栅格化成与原图同尺寸的单通道 mask。
+
+```bash
+python scripts/convert_manifest.py \
+  --input /data/yukun/Seg/datasets/custom/annotations.json \
+  --root /data/yukun/Seg/datasets/custom \
+  --output /data/yukun/Seg/datasets/custom/test.jsonl
+```
+
+转换工具生成二值 PNG 和 JSONL；JSONL 内使用绝对路径，迁移机器时重新转换。图片尺寸与 mask 不一致会报错，请修正标注后重试。
+
+## 5. 批量推理与评估
 
 ```bash
 export SEG_ROOT=/data/yukun/Seg
